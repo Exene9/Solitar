@@ -10,16 +10,17 @@ import os
 import sys
 
 # --------- CONFIG ----------
-SCREEN_W, SCREEN_H = 1920, 1080
-CARD_W, CARD_H = 90, 128
-PADDING_X = 12
-PADDING_Y = 18
+# Tuned for 14" MacBook Pro (default scaled resolution)
+SCREEN_W, SCREEN_H = 1512, 900
+CARD_W, CARD_H = 70, 100
+PADDING_X = 10
+PADDING_Y = 10
 TOP_OFFSET = 30
 SIDE_OFFSET = 40
 BUTTON_W, BUTTON_H = 130, 36
 FPS = 30
 
-ASSET_DIR = "Carded"   # folder with 1.png .. 52.png and back.png
+ASSET_DIR = "Carded"   # folder with 1.JPG .. 52.JPG and Back.JPG
 # ---------------------------
 
 # ---------- Card class ----------
@@ -37,6 +38,7 @@ class Card:
         self.suit_index = (number - 1) // 13  # 0..3
         self.selected = False
         self.removed = False  # removed from pyramid/stock/waste (like "**")
+
     def name(self):
         rank_lookup = {1: "A", 11: "J", 12: "Q", 13: "K"}
         r = rank_lookup.get(self.rank, str(self.rank))
@@ -46,7 +48,8 @@ class Card:
 # ---------- Helper functions (logic) ----------
 def cardLogic_obj(a: Card, b: Card):
     """Return True if two cards sum to 13 by rank"""
-    if a is None or b is None: return False
+    if a is None or b is None:
+        return False
     return (a.rank + b.rank) == 13
 
 def is_king(card: Card):
@@ -56,20 +59,29 @@ def is_king(card: Card):
 def load_card_images():
     images = {}
     for n in range(1, 53):
-        path = os.path.join(ASSET_DIR, f"{n}.JPG")
+        path = os.path.join(ASSET_DIR, f"{n}.JPG")  # or .png if you changed it
         if os.path.exists(path):
             surf = pygame.image.load(path).convert_alpha()
             surf = pygame.transform.smoothscale(surf, (CARD_W, CARD_H))
         else:
-            # fallback: make a plain colored surface with number text
+            # fallback: make a plain colored surface with rank + suit text
             surf = pygame.Surface((CARD_W, CARD_H), pygame.SRCALPHA)
             surf.fill((245, 245, 245))
-            f = pygame.font.SysFont(None, 22)
-            txt = f.render(str(n), True, (0, 0, 0))
+            f = pygame.font.SysFont(None, 24)
+
+            # compute rank and suit for display
+            rank = ((n - 1) % 13) + 1
+            suit_index = (n - 1) // 13  # 0..3
+            rank_lookup = {1: "A", 11: "J", 12: "Q", 13: "K"}
+            r = rank_lookup.get(rank, str(rank))
+            suits = ["♠", "♥", "♦", "♣"]
+            s = suits[suit_index]
+
+            txt = f.render(f"{r}{s}", True, (0, 0, 0))
             surf.blit(txt, (6, 6))
         images[n] = surf
     # back image
-    back_path = os.path.join(ASSET_DIR, "Back.JPG")
+    back_path = os.path.join(ASSET_DIR, "Back.JPG")  # or Back.png if you changed it
     if os.path.exists(back_path):
         back = pygame.image.load(back_path).convert_alpha()
         back = pygame.transform.smoothscale(back, (CARD_W, CARD_H))
@@ -196,23 +208,24 @@ class PyramidGame:
         self.stock = deck[28:52]
         self.waste = ["**"]
         self.foundation = []
-        self.selected = []  
+        self.selected = []
         self.compute_positions()
         self.message = ""
 
     def compute_positions(self):
         total_pyramid_width = 7 * CARD_W + 6 * PADDING_X
-        start_x = (SCREEN_W - total_pyramid_width) // 2
         y = TOP_OFFSET
         self.pyramid_positions = []  # index -> rect
         index = 0
-        for row_len in [1,2,3,4,5,6,7]:
+        for row_len in [1, 2, 3, 4, 5, 6, 7]:
             row_width = row_len * CARD_W + (row_len - 1) * PADDING_X
             row_start_x = (SCREEN_W - row_width) // 2
             for col in range(row_len):
-                rect = pygame.Rect(row_start_x + col*(CARD_W + PADDING_X),
-                                   y,
-                                   CARD_W, CARD_H)
+                rect = pygame.Rect(
+                    row_start_x + col * (CARD_W + PADDING_X),
+                    y,
+                    CARD_W, CARD_H
+                )
                 self.pyramid_positions.append(rect)
                 index += 1
             y += CARD_H + PADDING_Y
@@ -221,9 +234,16 @@ class PyramidGame:
         self.stock_rect = pygame.Rect(SIDE_OFFSET, TOP_OFFSET + 20, CARD_W, CARD_H)
         self.waste_rect = pygame.Rect(SIDE_OFFSET + CARD_W + 16, TOP_OFFSET + 20, CARD_W, CARD_H)
 
-        # buttons
-        self.rotate_button_rect = pygame.Rect(SCREEN_W - BUTTON_W - 20, TOP_OFFSET + 20, BUTTON_W, BUTTON_H)
-        self.newgame_button_rect = pygame.Rect(SCREEN_W - BUTTON_W - 20, TOP_OFFSET + 20 + BUTTON_H + 12, BUTTON_W, BUTTON_H)
+        # buttons (right side)
+        self.rotate_button_rect = pygame.Rect(
+            SCREEN_W - BUTTON_W - 20, TOP_OFFSET + 20, BUTTON_W, BUTTON_H
+        )
+        self.newgame_button_rect = pygame.Rect(
+            SCREEN_W - BUTTON_W - 20,
+            TOP_OFFSET + 20 + BUTTON_H + 12,
+            BUTTON_W,
+            BUTTON_H,
+        )
 
     def draw(self):
         self.screen.fill((34, 90, 55))
@@ -247,57 +267,61 @@ class PyramidGame:
                 self.screen.blit(self.back_image, self.stock_rect)
             else:
                 # placeholder
-                pygame.draw.rect(self.screen, (200,200,200), self.stock_rect)
+                pygame.draw.rect(self.screen, (200, 200, 200), self.stock_rect)
         else:
             # empty stock draw placeholder
-            pygame.draw.rect(self.screen, (60,60,60), self.stock_rect)
+            pygame.draw.rect(self.screen, (60, 60, 60), self.stock_rect)
 
         # draw waste
         if len(self.waste) > 0:
             topw = self.waste[0]
             if topw == "**":
-                pygame.draw.rect(self.screen, (100,100,100), self.waste_rect)
+                pygame.draw.rect(self.screen, (100, 100, 100), self.waste_rect)
             else:
                 if isinstance(topw, Card):
                     self.screen.blit(topw.image, self.waste_rect)
                     if topw in self.selected:
-                        pygame.draw.rect(self.screen, (255,215,0), self.waste_rect, 4, border_radius=6)
+                        pygame.draw.rect(self.screen, (255, 215, 0), self.waste_rect, 4, border_radius=6)
                 else:
-                    pygame.draw.rect(self.screen, (120,120,120), self.waste_rect)
+                    pygame.draw.rect(self.screen, (120, 120, 120), self.waste_rect)
         else:
-            pygame.draw.rect(self.screen, (60,60,60), self.waste_rect)
+            pygame.draw.rect(self.screen, (60, 60, 60), self.waste_rect)
 
         # draw rotate / new game buttons
-        pygame.draw.rect(self.screen, (200,200,200), self.rotate_button_rect, border_radius=6)
-        pygame.draw.rect(self.screen, (200,200,200), self.newgame_button_rect, border_radius=6)
-        rt = self.font.render("Rotate Stock", True, (0,0,0))
-        ng = self.font.render("New Game", True, (0,0,0))
+        pygame.draw.rect(self.screen, (200, 200, 200), self.rotate_button_rect, border_radius=6)
+        pygame.draw.rect(self.screen, (200, 200, 200), self.newgame_button_rect, border_radius=6)
+        rt = self.font.render("Rotate Stock", True, (0, 0, 0))
+        ng = self.font.render("New Game", True, (0, 0, 0))
         self.screen.blit(rt, (self.rotate_button_rect.x + 12, self.rotate_button_rect.y + 8))
         self.screen.blit(ng, (self.newgame_button_rect.x + 28, self.newgame_button_rect.y + 8))
 
         # draw top labels
-        lbl = self.font.render("Stock", True, (255,255,255))
-        lbl2 = self.font.render("Waste", True, (255,255,255))
+        lbl = self.font.render("Stock", True, (255, 255, 255))
+        lbl2 = self.font.render("Waste", True, (255, 255, 255))
         self.screen.blit(lbl, (self.stock_rect.x, self.stock_rect.y - 18))
         self.screen.blit(lbl2, (self.waste_rect.x, self.waste_rect.y - 18))
 
         # message
-        msgsurf = self.font.render(self.message, True, (255,255,0))
+        msgsurf = self.font.render(self.message, True, (255, 255, 0))
         self.screen.blit(msgsurf, (20, SCREEN_H - 30))
 
         # draw foundation count
-        fnt = self.font.render(f"Foundation: {len([x for x in self.foundation if x != '**'])}", True, (255,255,255))
+        fnt = self.font.render(
+            f"Foundation: {len([x for x in self.foundation if x != '**'])}",
+            True,
+            (255, 255, 255),
+        )
         self.screen.blit(fnt, (SCREEN_W - 220, SCREEN_H - 30))
 
     def click_at(self, pos):
-        x,y = pos
+        x, y = pos
         # check pyramid
         for i, rect in enumerate(self.pyramid_positions):
             if rect.collidepoint(pos):
                 card = self.pyramid[i]
                 if card == "**" or card is None:
                     return
-                # check accessibility: only allow selecting accessible cards OR kings on top
+                # check accessibility: only allow selecting accessible cards
                 accessible = get_accessible_cards(self.pyramid, self.stock, self.waste)
                 if card not in accessible:
                     self.message = "That pyramid card is covered"
@@ -307,10 +331,8 @@ class PyramidGame:
 
         # check stock
         if self.stock_rect.collidepoint(pos):
-            # clicking stock rotates (like original: pressing menu option does it), but we keep rotate button
-            # also allow selecting top of stock if present
+            # clicking stock: allow selecting top of stock if present
             if len(self.stock) > 0 and self.stock[0] != "**":
-                # select top of stock as a selectable card (it must be in accessibility list)
                 if self.stock[0] in get_accessible_cards(self.pyramid, self.stock, self.waste):
                     self.toggle_select(self.stock[0])
                 else:
@@ -335,6 +357,7 @@ class PyramidGame:
             self.stock, self.waste = stock_rotate(self.stock, self.waste)
             self.selected.clear()
             self.message = "Rotated stock"
+            self.check_loss()
             return
 
         # new game
@@ -354,31 +377,56 @@ class PyramidGame:
         self.selected.append(card)
         # if we selected a king, remove it instantly
         if is_king(card):
-            # remove single king
-            self.pyramid, self.stock, self.waste, self.foundation = removeCards_obj(card, "none", self.pyramid, self.stock, self.waste, self.foundation)
+            self.pyramid, self.stock, self.waste, self.foundation = removeCards_obj(
+                card, "none", self.pyramid, self.stock, self.waste, self.foundation
+            )
             self.selected.clear()
             self.message = f"Removed King {card.name()}"
-            # check win
             self.check_win()
+            self.check_loss()
             return
 
         # if two cards selected, check combination
         if len(self.selected) == 2:
             a, b = self.selected
             if cardLogic_obj(a, b):
-                self.pyramid, self.stock, self.waste, self.foundation = removeCards_obj(a, b, self.pyramid, self.stock, self.waste, self.foundation)
+                self.pyramid, self.stock, self.waste, self.foundation = removeCards_obj(
+                    a, b, self.pyramid, self.stock, self.waste, self.foundation
+                )
                 self.message = f"Removed {a.name()} + {b.name()}"
             else:
                 self.message = f"{a.name()} + {b.name()} do not sum to 13"
             self.selected.clear()
             self.check_win()
+            self.check_loss()
 
     def check_win(self):
         all_removed = all((c == "**" or c is None) for c in self.pyramid)
         if all_removed:
             self.message = "You removed the pyramid! You win!"
-            # could show messagebox, but avoid blocking - set message
-            # optionally restart or let user click New Game
+
+    def check_loss(self):
+        # If already won, don't override the win message
+        if all((c == "**" or c is None) for c in self.pyramid):
+            return False
+
+        accessible = get_accessible_cards(self.pyramid, self.stock, self.waste)
+        cards = [c for c in accessible if isinstance(c, Card)]
+
+        # Any accessible king?
+        for c in cards:
+            if c.rank == 13:
+                return False
+
+        # Any accessible pair summing to 13?
+        for i in range(len(cards)):
+            for j in range(i + 1, len(cards)):
+                if cards[i].rank + cards[j].rank == 13:
+                    return False
+
+        # No kings, no pairs among accessible cards → no immediate moves
+        self.message = "No moves left! Game over."
+        return True
 
 # ---------- Main ----------
 def main():
@@ -399,8 +447,10 @@ def main():
                 game.click_at(event.pos)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
-                    # shortcut rotate
                     game.stock, game.waste = stock_rotate(game.stock, game.waste)
+                    game.selected.clear()
+                    game.message = "Rotated stock"
+                    game.check_loss()
                 if event.key == pygame.K_n:
                     game.init_new_game()
 
