@@ -47,6 +47,21 @@ def cardLogic_obj(a: Card, b: Card):
 def is_king(card):
     return card.rank == 13
 
+def get_move_string(move):
+    def n_str(n):
+        rank = ((n - 1) % 13) + 1
+        suits = ["S", "H", "D", "C"]
+        r_s = {1: "A", 11: "J", 12: "Q", 13: "K"}.get(rank, str(rank))
+        return r_s + suits[(n - 1) // 13]
+
+    if move[0] == "king":
+        return f"Remove K: {n_str(move[1])}"
+    elif move[0] == "pair":
+        return f"Pair: {n_str(move[1])} & {n_str(move[2])}"
+    elif move[0] == "rotate":
+        return "Rotate Stock"
+    return ""
+
 # Load Images
 def load_card_images():
     images = {}
@@ -308,6 +323,25 @@ class PyramidGame:
         msg = self.font.render(self.message, True, (255,255,0))
         self.screen.blit(msg, (20, SCREEN_H - 30))
 
+        # --- NEW: Display DFS Move List ---
+        if self.ai_moves:
+            list_x = self.newgame_button.x
+            list_y = self.newgame_button.y + BUTTON_H + 20
+            
+            # Calculate remaining moves
+            remaining = len(self.ai_moves) - self.ai_step_index
+            header = self.font.render(f"Moves Left: {remaining}", True, (255, 255, 0))
+            self.screen.blit(header, (list_x, list_y))
+            list_y += 25
+            
+            # Slice the list to show only upcoming moves (limit to 20 lines to fit screen)
+            upcoming_moves = self.ai_moves[self.ai_step_index : self.ai_step_index + 20]
+            
+            for m in upcoming_moves:
+                txt_str = get_move_string(m)
+                surf = self.font.render(txt_str, True, (220, 220, 220))
+                self.screen.blit(surf, (list_x, list_y))
+                list_y += 20
     # Find card
     def find_card(self, num):
         for c in self.pyramid:
