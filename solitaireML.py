@@ -1,9 +1,3 @@
-"""
-pyramid_pygame.py
-Single-file Pygame implementation of your Pyramid solitaire logic.
-Requires a folder 'cards' containing 1.png..52.png and back.png
-"""
-
 import pygame
 import random
 import os
@@ -110,6 +104,7 @@ def stock_rotate(stock, waste):
 
 # Pyramid Helper
 def pyramid_rows_from_list(p):
+    """Return pyramid as list of rows"""
     return [
         [p[0]],
         p[1:3],
@@ -124,46 +119,59 @@ def get_accessible_cards(pyramid, stock, waste):
     acc = []
 
     # Stock top
-    acc.append(stock[0] if len(stock) > 0 else "**")
+    if len(stock) > 0 and stock[0] != "**":
+        acc.append(stock[0])
 
     # Waste top
-    acc.append(waste[0] if len(waste) > 0 else "**")
+    if len(waste) > 0 and isinstance(waste[0], Card):
+        acc.append(waste[0])
 
     rows = pyramid_rows_from_list(pyramid)
 
-    # Bottom row
+    # Bottom row is always accessible
     for c in rows[6]:
         if c != "**":
             acc.append(c)
 
-    # Rows above bottom
-    for r in range(6):
-        for i in range(len(rows[r])):
-            below_left = rows[r+1][i]
-            below_right = rows[r+1][i+1]
-            if (below_left == "**") and (below_right == "**"):
-                if rows[r][i] != "**":
-                    acc.append(rows[r][i])
+    # Rows above bottom: only accessible if **entire row below is cleared**
+    for r in range(5, -1, -1):
+        if all(c == "**" for c in rows[r+1]):  # check entire row below
+            for c in rows[r]:
+                if c != "**":
+                    acc.append(c)
 
     return acc
 
+
+
 # Remove cards function
 def removeCards_obj(a, b, pyramid, stock, waste, foundation):
-    # Remove from pyramid
-    for i in range(len(pyramid)):
-        if pyramid[i] == a or pyramid[i] == b:
-            foundation.append(pyramid[i])
-            pyramid[i] = "**"
+    accessible = get_accessible_cards(pyramid, stock, waste)
 
-    # Remove from stock
-    if len(stock) > 0 and (stock[0] == a or stock[0] == b):
-        foundation.append(stock.pop(0))
+    def remove_card(c):
+        if c not in accessible:
+            return
+        # Pyramid
+        for i in range(len(pyramid)):
+            if pyramid[i] == c:
+                foundation.append(pyramid[i])
+                pyramid[i] = "**"
+        # Stock
+        if len(stock) > 0 and stock[0] == c:
+            foundation.append(stock.pop(0))
+        # Waste
+        if len(waste) > 0 and waste[0] == c:
+            foundation.append(waste.pop(0))
 
-    # Remove from waste
-    if len(waste) > 0 and (waste[0] == a or waste[0] == b):
-        foundation.append(waste.pop(0))
+    if a != "none":
+        remove_card(a)
+    if b != "none":
+        remove_card(b)
 
     return pyramid, stock, waste, foundation
+
+
+
 
 # DFS Helpers
 def encode_list_for_state(lst):
@@ -177,15 +185,13 @@ def find_solution_dfs(pyramid, stock, waste, foundation, max_nodes=200000):
     visited = set()
     nodes = 0
 
-    def dfs(p, s, w, f, path, depth):
+    def dfs(p, s, w, f, path):
         nonlocal nodes
         nodes += 1
         if nodes > max_nodes:
             return None
 
         if is_pyramid_cleared(p):
-            if depth <= 3:
-                print(f"[DFS depth {depth}] ✔ Pyramid cleared (moves={len(path)})")
             return path
 
         key = (encode_list_for_state(p), encode_list_for_state(s), encode_list_for_state(w))
@@ -193,54 +199,43 @@ def find_solution_dfs(pyramid, stock, waste, foundation, max_nodes=200000):
             return None
         visited.add(key)
 
+        # Compute accessible cards for this state
         acc = get_accessible_cards(p, s, w)
         cards = [c for c in acc if isinstance(c, Card)]
 
-        # Kings
+        # Remove Kings
         for c in cards:
             if c.rank == 13:
-                if depth <= 3:
-                    print(f"[DFS depth {depth}] Trying KING {c.name()}")
                 p2, s2, w2, f2 = list(p), list(s), list(w), list(f)
                 p2, s2, w2, f2 = removeCards_obj(c, "none", p2, s2, w2, f2)
-                res = dfs(p2, s2, w2, f2, path + [("king", c.number)], depth + 1)
+                res = dfs(p2, s2, w2, f2, path + [("king", c.number)])
                 if res:
                     return res
 
-        # Pairs
+        # Remove pairs
         for i in range(len(cards)):
             for j in range(i+1, len(cards)):
                 a, b = cards[i], cards[j]
                 if a.rank + b.rank == 13:
-                    if depth <= 3:
-                        print(f"[DFS depth {depth}] Trying PAIR {a.name()} + {b.name()}")
                     p2, s2, w2, f2 = list(p), list(s), list(w), list(f)
                     p2, s2, w2, f2 = removeCards_obj(a, b, p2, s2, w2, f2)
-                    res = dfs(p2, s2, w2, f2, path + [("pair", a.number, b.number)], depth + 1)
+                    res = dfs(p2, s2, w2, f2, path + [("pair", a.number, b.number)])
                     if res:
                         return res
 
-        # Rotate
+        # Rotate stock if possible
         if len(s) > 0 or (len(w) > 0 and w[0] != "**"):
-            if depth <= 3:
-                print(f"[DFS depth {depth}] Trying ROTATE")
             p2, s2, w2, f2 = list(p), list(s), list(w), list(f)
             s2, w2 = stock_rotate(s2, w2)
-            res = dfs(p2, s2, w2, f2, path + [("rotate",)], depth + 1)
+            res = dfs(p2, s2, w2, f2, path + [("rotate",)])
             if res:
                 return res
 
         return None
 
-    print("\n=== DFS Search Started ===")
-    sol = dfs(list(pyramid), list(stock), list(waste), list(foundation), [], 0)
-
-    if sol:
-        print(f"=== DFS Finished: Solution found ({len(sol)} moves, {nodes} states) ===\n")
-    else:
-        print(f"=== DFS Finished: NO solution ({nodes} states) ===\n")
-
+    sol = dfs(list(pyramid), list(stock), list(waste), list(foundation), [])
     return sol
+
 
 # Game Class
 class PyramidGame:
@@ -264,7 +259,7 @@ class PyramidGame:
         self.ai_running = False
         self.ai_step_index = 0
         self.ai_last_step_time = 0
-
+   
     def compute_positions(self):
         y = TOP_OFFSET
         self.pyramid_positions = []
@@ -289,7 +284,7 @@ class PyramidGame:
     # This is where the GUI of the Pyramid Solitaire is made
     def draw(self):
         self.screen.fill((34,90,55))
-
+        
         # Pyramid
         for i, pos in enumerate(self.pyramid_positions):
             c = self.pyramid[i]
@@ -323,7 +318,7 @@ class PyramidGame:
         msg = self.font.render(self.message, True, (255,255,0))
         self.screen.blit(msg, (20, SCREEN_H - 30))
 
-        # --- NEW: Display DFS Move List ---
+        # --- Display DFS Move List ---
         if self.ai_moves:
             list_x = self.newgame_button.x
             list_y = self.newgame_button.y + BUTTON_H + 20
@@ -439,7 +434,7 @@ class PyramidGame:
         self.message = "AI: Executing solution..."
 
     def update_ai(self):
-        if not self.ai_running:
+        if not self.ai_running or not self.ai_moves:
             return
 
         now = pygame.time.get_ticks()
