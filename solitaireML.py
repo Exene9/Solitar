@@ -281,7 +281,7 @@ class PyramidGame:
         self.rotate_button = pygame.Rect(SCREEN_W - BUTTON_W - 20, TOP_OFFSET+20, BUTTON_W, BUTTON_H)
         self.newgame_button = pygame.Rect(SCREEN_W - BUTTON_W - 20, TOP_OFFSET+20+BUTTON_H+10, BUTTON_W, BUTTON_H)
 
-    # This is where the GUI of the Pyramid Solitaire is made
+# This is where the GUI of the Pyramid Solitaire is made
     def draw(self):
         self.screen.fill((34,90,55))
         
@@ -420,18 +420,20 @@ class PyramidGame:
     def start_ai_solve(self):
         self.message = "AI: DFS searching..."
         pygame.display.flip()
-
+        start_time = pygame.time.get_ticks()
         sol = find_solution_dfs(self.pyramid, self.stock, self.waste, self.foundation)
-
+        end_time = pygame.time.get_ticks()
+        elapsed_ms = end_time - start_time
+        elapsed_sec = elapsed_ms / 1000.0
         if not sol:
-            self.message = "AI: No solution."
+            self.message = f"AI: No solution. (search took{elapsed_sec:.3f}s)"
             return
 
         self.ai_moves = sol
         self.ai_running = True
         self.ai_step_index = 0
         self.ai_last_step_time = pygame.time.get_ticks()
-        self.message = "AI: Executing solution..."
+        self.message = f"AI: Executing solution... (search took {elapsed_sec:.3f}s)"
 
     def update_ai(self):
         if not self.ai_running or not self.ai_moves:
@@ -445,7 +447,7 @@ class PyramidGame:
 
         if self.ai_step_index >= len(self.ai_moves):
             self.ai_running = False
-            self.message = "AI: Done!"
+            self.message = f"AI: Done! (search took {self.elapsed_sec:.3f}s)"
             return
 
         m = self.ai_moves[self.ai_step_index]
