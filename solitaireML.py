@@ -244,6 +244,7 @@ class PyramidGame:
         self.images, self.back_img = load_card_images()
         self.font = pygame.font.SysFont(None, 22)
         self.init_new_game()
+        
 
     def init_new_game(self):
         deck = create_deck(self.images)
@@ -254,12 +255,12 @@ class PyramidGame:
         self.selected = []
         self.compute_positions()
         self.message = ""
-
+        self.elapsed_sec=0
         self.ai_moves = None
         self.ai_running = False
         self.ai_step_index = 0
         self.ai_last_step_time = 0
-   
+        
     def compute_positions(self):
         y = TOP_OFFSET
         self.pyramid_positions = []
@@ -420,20 +421,27 @@ class PyramidGame:
     def start_ai_solve(self):
         self.message = "AI: DFS searching..."
         pygame.display.flip()
+
         start_time = pygame.time.get_ticks()
         sol = find_solution_dfs(self.pyramid, self.stock, self.waste, self.foundation)
         end_time = pygame.time.get_ticks()
-        elapsed_ms = end_time - start_time
-        elapsed_sec = elapsed_ms / 1000.0
+        elapsed_sec = (end_time - start_time) / 1000.0
+        self.elapsed_sec = elapsed_sec
+
         if not sol:
-            self.message = f"AI: No solution. (search took{elapsed_sec:.3f}s)"
+            self.message = f"AI: No solution. (search took {elapsed_sec:.3f}s)"
             return
 
+        # Store solution but DO NOT execute yet
         self.ai_moves = sol
-        self.ai_running = True
         self.ai_step_index = 0
-        self.ai_last_step_time = pygame.time.get_ticks()
-        self.message = f"AI: Executing solution... (search took {elapsed_sec:.3f}s)"
+        self.ai_running = False  # important
+
+        # Ask user for confirmation
+        self.awaiting_ai_confirm = True
+
+        self.message = f"AI found a solution in {elapsed_sec:.3f}s. Execute? (Y/N)"
+
 
     def update_ai(self):
         if not self.ai_running or not self.ai_moves:
@@ -493,15 +501,38 @@ def main():
                 running = False
 
             if event.type == pygame.KEYDOWN:
+                if getattr(game, 'awaiting_ai_confirm', False):
+
+                    
+                    if event.key == pygame.K_y:
+                        game.awaiting_ai_confirm = False
+                        game.ai_running = True
+                        game.ai_last_step_time = pygame.time.get_ticks()
+                        game.message = "AI: Executing solution..."
+
+                    
+                    elif event.key == pygame.K_n:
+                        game.awaiting_ai_confirm = False
+                        game.ai_running = False
+                        game.message = "AI: Execution canceled."
+
+                    
+                    continue
+
+        
+            if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_n:
                     game.init_new_game()
+
                 if event.key == pygame.K_s:
-                    game.start_ai_solve()
+                    game.start_ai_solve()  
+
                 if event.key == pygame.K_r and not game.ai_running:
                     game.stock, game.waste = stock_rotate(game.stock, game.waste)
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
+                if event.button == 1 and not getattr(game, 'awaiting_ai_confirm', False):
+                    # Disable clicking cards while deciding (Y/N)
                     game.click_at(event.pos)
 
         game.update_ai()
