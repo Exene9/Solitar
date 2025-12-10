@@ -1,11 +1,9 @@
 # main.py
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, filedialog
 import os
-import sys
-import threading
+import datetime
 
-# Import custom modules
 import settings
 import models
 import game_logic as gl
@@ -19,6 +17,33 @@ try:
     HAS_PIL = True
 except ImportError:
     pass
+
+# --- Solution Guide Window ---
+class StepsWindow(tk.Toplevel):
+    def __init__(self, parent, moves):
+        super().__init__(parent)
+        self.title("Solution Guide")
+        self.geometry("300x600")
+        self.configure(bg="#1a452a")
+        
+        tk.Label(self, text="Winning Steps", font=("Arial", 14, "bold"), 
+                 bg="#1a452a", fg="#f0d060").pack(pady=10)
+        
+        tk.Label(self, text="Follow these moves to win:", 
+                 bg="#1a452a", fg="#ddd").pack(pady=(0, 5))
+
+        self.txt_steps = scrolledtext.ScrolledText(self, bg="#222", fg="#eee", 
+                                                   font=("Consolas", 10), width=30)
+        self.txt_steps.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+        
+        self.populate_steps(moves)
+
+    def populate_steps(self, moves):
+        self.txt_steps.delete("1.0", tk.END)
+        for i, move in enumerate(moves):
+            step_str = gl.get_move_string(move)
+            self.txt_steps.insert(tk.END, f"{i+1}. {step_str}\n")
+        self.txt_steps.config(state=tk.DISABLED)
 
 class BenchmarkWindow(tk.Toplevel):
     def __init__(self, parent):
@@ -86,6 +111,7 @@ class SolitaireApp(tk.Tk):
         
         self.ai_moves = None
         self.ai_running = False
+        self.last_algo_used = ""
         
         self.image_cache = {}
         self.back_image = None
@@ -133,6 +159,14 @@ class SolitaireApp(tk.Tk):
         tk.Button(self.sidebar, text="Solve (A*)", command=lambda: self.start_ai_search("A*"), 
                   font=("Arial", 10, "bold"), bg="#40a0ff", fg="white", bd=0, cursor="hand2").pack(fill=tk.X, padx=20, pady=5, ipady=5)
 
+        self.btn_show_steps = tk.Button(self.sidebar, text="📖 Show Steps", command=self.open_steps_window, 
+                                    font=("Arial", 10), bg="#557766", fg="#ddd", bd=0, cursor="hand2", state=tk.DISABLED)
+        self.btn_show_steps.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+
+        self.btn_export = tk.Button(self.sidebar, text="💾 Export File", command=self.export_moves, 
+                                    font=("Arial", 10), bg="#557766", fg="#ddd", bd=0, cursor="hand2", state=tk.DISABLED)
+        self.btn_export.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+
         tk.Frame(self.sidebar, height=2, bg="#557766").pack(fill=tk.X, padx=10, pady=15)
         tk.Button(self.sidebar, text="📊 Benchmark", command=self.open_benchmark, 
                   font=("Arial", 10), bg="#aaa", fg="#000", bd=0, cursor="hand2").pack(fill=tk.X, padx=20, pady=5, ipady=5)
@@ -146,6 +180,10 @@ class SolitaireApp(tk.Tk):
 
     def open_benchmark(self):
         BenchmarkWindow(self)
+    
+    def open_steps_window(self):
+        if not self.ai_moves: return
+        StepsWindow(self, self.ai_moves)
 
     def start_new_game(self):
         self.deck = models.create_deck()
@@ -156,13 +194,16 @@ class SolitaireApp(tk.Tk):
         self.selected = []
         self.ai_moves = None
         self.ai_running = False
+        self.last_algo_used = ""
+        
+        self.btn_export.config(state=tk.DISABLED, bg="#557766")
+        self.btn_show_steps.config(state=tk.DISABLED, bg="#557766")
         self.lbl_status.config(text="New Game Started")
         self.refresh_canvas()
 
     def refresh_canvas(self):
         self.canvas.delete("all")
         
-        # 1. Draw Pyramid
         y = settings.TOP_OFFSET
         idx = 0
         for row in range(1, 8):
@@ -178,7 +219,6 @@ class SolitaireApp(tk.Tk):
                 idx += 1
             y += settings.CARD_H + settings.PADDING_Y
 
-        # 2. Draw Stock
         if len(self.stock) > 0 and self.stock[0] != "**":
             self.draw_card_at("back", settings.SIDE_OFFSET, settings.TOP_OFFSET, "stock")
             self.canvas.create_text(settings.SIDE_OFFSET + settings.CARD_W/2, settings.TOP_OFFSET - 15, text=f"Stock ({len(self.stock)})", fill="#ccc")
@@ -186,13 +226,11 @@ class SolitaireApp(tk.Tk):
             self.draw_placeholder(settings.SIDE_OFFSET, settings.TOP_OFFSET, "stock")
             self.canvas.create_text(settings.SIDE_OFFSET + settings.CARD_W/2, settings.TOP_OFFSET - 15, text="Empty", fill="#ccc")
 
-        # 3. STOCK HIGHLIGHT 
         if "stock_pile" in self.selected:
             x, y = settings.SIDE_OFFSET, settings.TOP_OFFSET
             self.canvas.create_rectangle(x-3, y-3, x+settings.CARD_W+3, y+settings.CARD_H+3, 
                                          outline="yellow", width=3, tags=("highlight",))
 
-        # 4. Draw Waste
         waste_x = settings.SIDE_OFFSET + settings.CARD_W + 30
         if len(self.waste) > 0 and isinstance(self.waste[0], models.Card):
             self.draw_card_at(self.waste[0], waste_x, settings.TOP_OFFSET, "waste")
@@ -238,16 +276,19 @@ class SolitaireApp(tk.Tk):
 
         x, y = event.x, event.y
         
+        # Stock (Rotate)
         if settings.SIDE_OFFSET <= x <= settings.SIDE_OFFSET+settings.CARD_W and settings.TOP_OFFSET <= y <= settings.TOP_OFFSET+settings.CARD_H:
             self.user_rotate()
             return
 
+        # Waste
         w_x = settings.SIDE_OFFSET + settings.CARD_W + 30
         if w_x <= x <= w_x+settings.CARD_W and settings.TOP_OFFSET <= y <= settings.TOP_OFFSET+settings.CARD_H:
             if len(self.waste) > 0 and isinstance(self.waste[0], models.Card):
                 self.handle_card_select(self.waste[0])
             return
 
+        # Pyramid
         card = self.get_pyramid_card_at(x, y)
         if card:
             acc = gl.get_accessible_cards(self.pyramid, self.stock, self.waste)
@@ -276,11 +317,14 @@ class SolitaireApp(tk.Tk):
         return None
 
     def handle_card_select(self, card):
+        # Toggle Selection
         if card in self.selected:
             self.selected.remove(card)
+            self.lbl_status.config(text="Deselected")
         else:
             self.selected.append(card)
             
+            # 1. King (Single Remove)
             if gl.is_king(card):
                 self.pyramid, self.stock, self.waste, self.foundation = gl.removeCards_obj(
                     card, "none", self.pyramid, self.stock, self.waste, self.foundation
@@ -288,16 +332,23 @@ class SolitaireApp(tk.Tk):
                 self.selected.clear()
                 self.lbl_status.config(text=f"Removed King {card.name()}")
             
+            # 2. Pair Logic
             elif len(self.selected) == 2:
                 a, b = self.selected
-                if a.rank + b.rank == 13:
-                    self.pyramid, self.stock, self.waste, self.foundation = gl.removeCards_obj(
-                        a, b, self.pyramid, self.stock, self.waste, self.foundation
-                    )
-                    self.lbl_status.config(text=f"Matched {a.name()} & {b.name()}")
+                
+                # --- NEW VALIDATION CHECK ---
+                if not gl.is_valid_source_pair(a, b, self.pyramid):
+                    self.lbl_status.config(text="Invalid: Stock & Waste cannot match!", fg="#ff4444")
+                    self.selected.clear()
                 else:
-                    self.lbl_status.config(text="Sum is not 13", fg="#ffaaaa")
-                self.selected.clear()
+                    if a.rank + b.rank == 13:
+                        self.pyramid, self.stock, self.waste, self.foundation = gl.removeCards_obj(
+                            a, b, self.pyramid, self.stock, self.waste, self.foundation
+                        )
+                        self.lbl_status.config(text=f"Matched {a.name()} & {b.name()}")
+                    else:
+                        self.lbl_status.config(text="Sum is not 13", fg="#ffaaaa")
+                    self.selected.clear()
         
         self.refresh_canvas()
 
@@ -316,19 +367,53 @@ class SolitaireApp(tk.Tk):
             messagebox.showinfo("AI", f"No solution found via {algo_type}.")
             self.lbl_status.config(text="No Solution", fg="#ffaaaa")
         else:
-            ans = messagebox.askyesno("AI Success", f"{algo_type} found solution in {len(sol)} moves.\nExecute visual replay?")
+            self.ai_moves = sol
+            self.last_algo_used = algo_type
+            
+            self.btn_export.config(state=tk.NORMAL, bg="#f0d060", fg="black")
+            self.btn_show_steps.config(state=tk.NORMAL, bg="#f0d060", fg="black")
+
+            ans = messagebox.askyesno(
+                "AI Success", 
+                f"{algo_type} found solution in {len(sol)} moves.\n\n"
+                "• Click YES to watch the AI play it.\n"
+                "• Click NO to play it yourself (Use 'Show Steps')."
+            )
+            
             if ans:
-                self.ai_moves = sol
                 self.ai_running = True
                 self.lbl_status.config(text="AI Executing...", fg="#ffff00")
                 self.execute_ai_step(0)
             else:
-                self.lbl_status.config(text="AI Canceled")
+                self.lbl_status.config(text="Solution Ready. Click 'Show Steps'.")
 
-    # --- Two-Stage AI Execution (Highlight -> Move) ---
+    def export_moves(self):
+        if not self.ai_moves: return
+
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+            title="Save Solution As"
+        )
+        if not filename: return 
+
+        try:
+            with open(filename, "w") as f:
+                f.write(f"Pyramid Solitaire Solution\n")
+                f.write(f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Algorithm: {self.last_algo_used}\n")
+                f.write(f"Total Moves: {len(self.ai_moves)}\n")
+                f.write("-" * 40 + "\n\n")
+                for i, move in enumerate(self.ai_moves):
+                    txt = gl.get_move_string(move)
+                    f.write(f"Step {i+1}: {txt}\n")
+                f.write("\n" + "-" * 40 + "\n")
+                f.write("End of Solution\n")
+            messagebox.showinfo("Export", f"Successfully saved to:\n{filename}")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to save file:\n{e}")
 
     def execute_ai_step(self, index):
-        """Phase 1: Highlight the action."""
         if not self.ai_running: return
         if index >= len(self.ai_moves):
             self.ai_running = False
@@ -340,17 +425,13 @@ class SolitaireApp(tk.Tk):
         self.lbl_status.config(text=f"Step {index+1}/{len(self.ai_moves)}: {txt}")
 
         m_type = move[0]
-        
         self.selected = []
 
-        # 1. Highlight Logic
         if m_type == "rotate":
             self.selected.append("stock_pile") 
-
         elif m_type == "king":
             c = self.find_card(move[1])
             if c: self.selected.append(c)
-
         elif m_type == "pair":
             c1 = self.find_card(move[1])
             c2 = self.find_card(move[2])
@@ -358,26 +439,22 @@ class SolitaireApp(tk.Tk):
             if c2: self.selected.append(c2)
 
         self.refresh_canvas()
-
         delay = settings.AI_STEP_DELAY_MS // 2
         self.after(delay, lambda: self.finalize_ai_step(index, move))
 
     def finalize_ai_step(self, index, move):
-        """Phase 2: Perform the move logic."""
         if not self.ai_running: return
         
         m_type = move[0]
         
         if m_type == "rotate":
             self.stock, self.waste = gl.stock_rotate(self.stock, self.waste)
-        
         elif m_type == "king":
             c = self.find_card(move[1])
             if c:
                 self.pyramid, self.stock, self.waste, self.foundation = gl.removeCards_obj(
                     c, "none", self.pyramid, self.stock, self.waste, self.foundation
                 )
-
         elif m_type == "pair":
             c1 = self.find_card(move[1])
             c2 = self.find_card(move[2])
@@ -388,7 +465,6 @@ class SolitaireApp(tk.Tk):
 
         self.selected = []
         self.refresh_canvas()
-
         delay = settings.AI_STEP_DELAY_MS // 2
         self.after(delay, lambda: self.execute_ai_step(index+1))
 

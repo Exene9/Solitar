@@ -1,10 +1,10 @@
+# game_logic.py
 from models import Card
 
 def is_king(card):
     return card.rank == 13
-
+# Returns a string description of the move
 def get_move_string(move):
-    """Converts a move tuple into a readable string for the UI."""
     def n_str(n):
         rank = ((n - 1) % 13) + 1
         suits = ["S", "H", "D", "C"]
@@ -18,20 +18,21 @@ def get_move_string(move):
     elif move[0] == "rotate":
         return "Rotate Stock"
     return ""
-
+# Rotates the stock and waste piles according to game rules
 def stock_rotate(stock, waste):
     stock = list(stock)
     waste = list(waste)
 
-    # Remove empty marker if present
+    # Remove empty marker if present at top of waste
     if len(waste) > 0 and waste[0] == "**":
         waste.pop(0)
 
     if len(stock) != 0:
+        # Move top of Stock (Face Down) to top of Waste (Face Up)
         card = stock.pop(0)
         waste.insert(0, card)
     else:
-        # Recycle waste
+        # Recycle Waste back to Stock
         if len(waste) > 0:
             stock.extend(reversed(waste))
             waste.clear()
@@ -41,24 +42,18 @@ def stock_rotate(stock, waste):
 
 def pyramid_rows_from_list(p):
     return [
-        [p[0]],
-        p[1:3],
-        p[3:6],
-        p[6:10],
-        p[10:15],
-        p[15:21],
-        p[21:28],
+        [p[0]], p[1:3], p[3:6], p[6:10], p[10:15], p[15:21], p[21:28],
     ]
 
 def get_accessible_cards(pyramid, stock, waste):
     acc = []
-    # Stock Top
-    if len(stock) > 0 and stock[0] != "**":
-        acc.append(stock[0])
     
+ 
     # Waste Top
     if len(waste) > 0 and isinstance(waste[0], Card):
         acc.append(waste[0])
+
+    # Stock Top
 
     rows = pyramid_rows_from_list(pyramid)
 
@@ -73,23 +68,30 @@ def get_accessible_cards(pyramid, stock, waste):
                 if c != "**": acc.append(c)
     return acc
 
+def is_valid_source_pair(a, b, pyramid):
+   
+    a_in_pyr = (a in pyramid)
+    b_in_pyr = (b in pyramid)
+    
+    if not a_in_pyr and not b_in_pyr:
+        return False
+        
+    return True
+
 def removeCards_obj(a, b, pyramid, stock, waste, foundation):
     accessible = get_accessible_cards(pyramid, stock, waste)
 
     def remove_card(c):
         if c not in accessible: return
         
-        # Check Pyramid
         for i in range(len(pyramid)):
             if pyramid[i] == c:
                 foundation.append(pyramid[i])
                 pyramid[i] = "**"
         
-        # Check Stock
         if len(stock) > 0 and stock[0] == c:
             foundation.append(stock.pop(0))
         
-        # Check Waste
         if len(waste) > 0 and waste[0] == c:
             foundation.append(waste.pop(0))
 

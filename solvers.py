@@ -15,7 +15,7 @@ def heuristic(pyramid):
     h = cards_remaining / 2.0
     
     # Refinement: Add a small penalty for "buried" cards.
-    # This encourages the AI to pick cards that are blocking others (lower in the rows).
+    # This encourages the AI to pick cards that are blocking others.
     rows = gl.pyramid_rows_from_list(pyramid)
     blocking_penalty = 0
     
@@ -24,13 +24,11 @@ def heuristic(pyramid):
     for r_idx, row in enumerate(rows):
         for card in row:
             if card != "**":
-                # Add small weight: cards at top (row 0) add more "perceived cost"
-                # because we really want to clear them.
                 blocking_penalty += (7 - r_idx) * 0.1
 
     return h + blocking_penalty
 
-# --- DFS Algorithm (Unchanged) ---
+# --- DFS Algorithm ---
 def find_solution_dfs(pyramid, stock, waste, foundation):
     visited = set()
     nodes = 0
@@ -48,8 +46,13 @@ def find_solution_dfs(pyramid, stock, waste, foundation):
 
         acc = gl.get_accessible_cards(p, s, w)
         cards = [c for c in acc if isinstance(c, Card)]
+        
+        # Identify Stock/Waste cards for the constraint check
+        sw_cards = set()
+        if len(s) > 0 and s[0] != "**": sw_cards.add(s[0])
+        if len(w) > 0 and isinstance(w[0], Card): sw_cards.add(w[0])
 
-        # 1. Kings
+        # 1. Kings (Can be removed from anywhere)
         for c in cards:
             if c.rank == 13:
                 p2, s2, w2, f2 = list(p), list(s), list(w), list(f)
@@ -61,6 +64,11 @@ def find_solution_dfs(pyramid, stock, waste, foundation):
         for i in range(len(cards)):
             for j in range(i+1, len(cards)):
                 a, b = cards[i], cards[j]
+                
+                # CONSTRAINT: Both cards cannot be from Stock/Waste
+                if a in sw_cards and b in sw_cards:
+                    continue
+
                 if a.rank + b.rank == 13:
                     p2, s2, w2, f2 = list(p), list(s), list(w), list(f)
                     p2, s2, w2, f2 = gl.removeCards_obj(a, b, p2, s2, w2, f2)
@@ -78,13 +86,12 @@ def find_solution_dfs(pyramid, stock, waste, foundation):
 
     return dfs(list(pyramid), list(stock), list(waste), list(foundation), [])
 
-# --- A* Algorithm (Improved) ---
+# --- A* Algorithm ---
 def find_solution_astar(pyramid, stock, waste, foundation):
     max_nodes = settings.ASTAR_MAX_NODES
     
     # HEURISTIC WEIGHT
-    # 1.0 = Standard A* (Optimal path, but slow)
-    # 1.5 - 2.0 = Weighted A* (Much faster, slightly sub-optimal path)
+    # Higher = Greedier (Faster, maybe less optimal steps)
     H_WEIGHT = 2.5 
 
     start_node = (list(pyramid), list(stock), list(waste), list(foundation))
@@ -94,7 +101,6 @@ def find_solution_astar(pyramid, stock, waste, foundation):
     counter = 0 
     pq = []
     
-    # f = g + (h * weight)
     start_f = 0 + (start_h * H_WEIGHT)
     
     heapq.heappush(pq, (start_f, counter, 0, start_node, []))
@@ -118,6 +124,11 @@ def find_solution_astar(pyramid, stock, waste, foundation):
         acc = gl.get_accessible_cards(p, s, w)
         cards = [c for c in acc if isinstance(c, Card)]
         
+        # Identify Stock/Waste cards for the constraint check
+        sw_cards = set()
+        if len(s) > 0 and s[0] != "**": sw_cards.add(s[0])
+        if len(w) > 0 and isinstance(w[0], Card): sw_cards.add(w[0])
+        
         moves = []
 
         # 1. Kings
@@ -131,6 +142,11 @@ def find_solution_astar(pyramid, stock, waste, foundation):
         for i in range(len(cards)):
             for j in range(i+1, len(cards)):
                 a, b = cards[i], cards[j]
+                
+                
+                if a in sw_cards and b in sw_cards:
+                    continue
+
                 if a.rank + b.rank == 13:
                     p2, s2, w2, f2 = list(p), list(s), list(w), list(fd)
                     p2, s2, w2, f2 = gl.removeCards_obj(a, b, p2, s2, w2, f2)
@@ -147,7 +163,7 @@ def find_solution_astar(pyramid, stock, waste, foundation):
             new_g = g + 1
             new_h = heuristic(p_next)
             
-            # Apply Weight here
+            # Apply Weight
             new_f = new_g + (new_h * H_WEIGHT)
             
             counter += 1
