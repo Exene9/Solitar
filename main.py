@@ -93,7 +93,6 @@ class BenchmarkWindow(tk.Toplevel):
         self.btn_run.config(state=tk.DISABLED, text="Running...")
         benchmark.run_benchmark_gui(runs, limit, self.log, self.on_finish)
 
-
 class SolitaireApp(tk.Tk):
     def __init__(self):
         super().__init__()
