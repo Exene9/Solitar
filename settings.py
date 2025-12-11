@@ -1,53 +1,56 @@
 import tkinter as tk
 import ctypes
 
-class Settings:
-    def __init__(self):
-        # 1. High DPI Fix (Windows)
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception:
-            try:
-                ctypes.windll.user32.SetProcessDPIAware()
-            except Exception:
-                pass
+# 1. High DPI Fix (Windows) - Prevents blurry window/wrong size
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
-        # 2. Get Screen Dimensions using a temporary Tk instance
-        temp_root = tk.Tk()
-        temp_root.withdraw()  
-        
-        monitor_w = temp_root.winfo_screenwidth()
-        monitor_h = temp_root.winfo_screenheight()
-        
-        temp_root.destroy()   
+# 2. Get Screen Dimensions (Hidden Window)
+# We create a temporary hidden window just to read the screen size
+_temp_root = tk.Tk()
+_temp_root.withdraw()
 
-        # 3. Define Base Design Resolution (The 1920x1080 you designed for)
-        base_w = 1920
-        base_h = 1080
+monitor_w = _temp_root.winfo_screenwidth()
+monitor_h = _temp_root.winfo_screenheight()
 
-        # 4. Calculate Scaling Factor
-     
-        target_h = monitor_h * 0.85
-        self.scale = target_h / base_h
-        
-    
+_temp_root.destroy()
 
-        # 5. Calculate Final Screen Dimensions
-        self.screen_w = int(base_w * self.scale)
-        self.screen_h = int(base_h * self.scale)
+# 3. Define Base Design Resolution (Your original 1920x1080)
+BASE_W = 1920
+BASE_H = 1080
 
-        self.card_w = int(80 * self.scale)
-        self.card_h = int(115 * self.scale)
+# 4. Calculate Scaling Factor
+# Target 85% of screen height to ensure it fits with taskbars/title bars
+_target_h = monitor_h * 0.85
+SCALE = _target_h / BASE_H
 
-        self.padding_x = int(15 * self.scale)
-        self.padding_y = int(15 * self.scale)
-        self.top_offset = int(50 * self.scale)
-        self.side_offset = int(50 * self.scale)
+# ==========================================
+# DYNAMIC CONSTANTS (Calculated)
+# ==========================================
+# Note: We force int() here because Tkinter geometry crashes with floats
 
-  
-        self.asset_dir = "Carded"
-        # ai settings
-        self.ai_step_delay_ms = 600
-        self.dfs_max_nodes = 200000
-        self.astar_max_nodes = 150000
+SCREEN_W = int(BASE_W * SCALE)
+SCREEN_H = int(BASE_H * SCALE)
 
+CARD_W = int(80 * SCALE)
+CARD_H = int(115 * SCALE)
+
+PADDING_X = int(15 * SCALE)
+PADDING_Y = int(15 * SCALE)
+TOP_OFFSET = int(50 * SCALE)
+SIDE_OFFSET = int(50 * SCALE)
+
+# ==========================================
+# STATIC CONSTANTS
+# ==========================================
+
+ASSET_DIR = "Carded"
+
+AI_STEP_DELAY_MS = 600
+DFS_MAX_NODES = 200000
+ASTAR_MAX_NODES = 150000
